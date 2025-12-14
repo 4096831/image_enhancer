@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Image Resolution Enhancer</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pica/9.0.1/pica.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -35,7 +34,7 @@
 </head>
 <body>
     <h1>Image Resolution Enhancer</h1>
-    <p>Upload an image, select the target resolution, and enhance it. Note: Enhancing to very high resolutions like 16K may consume a lot of memory and could cause browser issues on lower-end devices. Start with small images and 4K for testing.</p>
+    <p>Upload an image, select the target resolution, and enhance it. Note: High resolutions like 16K are memory-intensive. Start with small images and 4K.</p>
     
     <input type="file" id="imageInput" accept="image/*">
     <select id="resolutionSelect">
@@ -54,15 +53,6 @@
     <a id="downloadLink" style="display: none;">Download Enhanced Image</a>
     
     <script>
-        let picaInstance = null;
-        try {
-            picaInstance = new Pica();
-            console.log('Pica library loaded successfully.');
-        } catch (e) {
-            console.error('Failed to load Pica library:', e);
-            alert('Error loading enhancement library. Check your internet, disable ad blockers, or try a different browser.');
-        }
-
         const imageInput = document.getElementById('imageInput');
         const resolutionSelect = document.getElementById('resolutionSelect');
         const enhanceButton = document.getElementById('enhanceButton');
@@ -73,6 +63,7 @@
 
         let originalImage = null;
         let imageLoaded = false;
+        let pica = null;
 
         imageInput.addEventListener('change', (event) => {
             statusDiv.textContent = 'Loading image...';
@@ -87,12 +78,9 @@
                         imageLoaded = true;
                         enhanceButton.disabled = false;
                         statusDiv.textContent = 'Image loaded. Ready to enhance.';
-                        console.log('Image loaded: width=' + originalImage.width + ', height=' + originalImage.height);
                     };
                     originalImage.onerror = () => {
-                        alert('Error loading the image. Try a different file.');
-                        imageLoaded = false;
-                        enhanceButton.disabled = true;
+                        alert('Error loading image.');
                         statusDiv.textContent = '';
                     };
                 };
@@ -101,54 +89,61 @@
         });
 
         enhanceButton.addEventListener('click', async () => {
-            if (!imageLoaded || !originalImage) {
-                alert('Please upload and wait for the image to load fully.');
-                return;
-            }
-            if (!picaInstance) {
-                alert('Enhancement library not available. Check console for errors.');
-                return;
-            }
+            if (!imageLoaded || !originalImage) return;
 
-            statusDiv.textContent = 'Enhancing image... This may take a while for high resolutions.';
-            console.log('Starting enhancement...');
+            statusDiv.textContent = 'Loading enhancement library...';
+
+            if (!pica) {
+                try {
+                    const script = document.createElement('script');
+                    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pica/9.0.1/pica.min.js';
+                    document.body.appendChild(script);
+                    await new Promise((resolve, reject) => {
+                        script.onload = resolve;
+                        script.onerror = () => reject(new Error('Failed to load Pica library'));
+                    });
+                    pica = new Pica();
+                    statusDiv.textContent = 'Library loaded. Enhancing...';
+                } catch (err) {
+                    console.error(err);
+                    alert('Could not load high-quality enhancer. Falling back to basic resize (lower quality).');
+                    statusDiv.textContent = 'Using basic resize...';
+                    pica = null; // Flag for fallback
+                }
+            } else {
+                statusDiv.textContent = 'Enhancing...';
+            }
 
             const targetWidth = parseInt(resolutionSelect.value);
             const aspectRatio = originalImage.width / originalImage.height;
             const targetHeight = Math.round(targetWidth / aspectRatio);
-            console.log('Target dimensions: ' + targetWidth + 'x' + targetHeight);
 
-            // Create source canvas
             const fromCanvas = document.createElement('canvas');
             fromCanvas.width = originalImage.width;
             fromCanvas.height = originalImage.height;
-            const ctx = fromCanvas.getContext('2d');
-            ctx.drawImage(originalImage, 0, 0);
-            console.log('Source canvas created.');
+            fromCanvas.getContext('2d').drawImage(originalImage, 0, 0);
 
-            // Create target canvas
             resultCanvas.width = targetWidth;
             resultCanvas.height = targetHeight;
-            console.log('Target canvas set.');
 
-            // Resize using pica
             try {
-                await picaInstance.resize(fromCanvas, resultCanvas);
-                console.log('Resize complete.');
-                statusDiv.textContent = 'Enhancement complete. Generating download...';
+                if (pica) {
+                    await pica.resize(fromCanvas, resultCanvas);
+                } else {
+                    // Fallback: Basic browser drawImage resize
+                    resultCanvas.getContext('2d').drawImage(fromCanvas, 0, 0, targetWidth, targetHeight);
+                }
 
-                // To blob for download
-                const blob = await picaInstance.toBlob(resultCanvas, 'image/jpeg', 0.90);
-                console.log('Blob created, size: ' + blob.size + ' bytes');
+                const blob = await (pica ? pica.toBlob(resultCanvas, 'image/jpeg', 0.90) : resultCanvas.toBlob('image/jpeg', 0.90));
                 const url = URL.createObjectURL(blob);
                 downloadLink.href = url;
                 downloadLink.download = 'enhanced_image.jpg';
                 downloadLink.textContent = 'Download Enhanced Image';
                 downloadLink.style.display = 'block';
-                statusDiv.textContent = 'Done! Enhanced image ready.';
+                statusDiv.textContent = 'Done!';
             } catch (error) {
-                console.error('Enhancement error:', error);
-                alert('Error enhancing image: ' + error.message + '. Try a smaller image/resolution or check console for details.');
+                console.error(error);
+                alert('Enhancement failed. Try a smaller image/resolution.');
                 statusDiv.textContent = '';
             }
         });
