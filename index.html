@@ -26,11 +26,16 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
+        #status {
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+        }
     </style>
 </head>
 <body>
     <h1>Image Resolution Enhancer</h1>
-    <p>Upload an image, select the target resolution, and enhance it. Note: Enhancing to very high resolutions like 16K may consume a lot of memory and could cause browser issues on lower-end devices.</p>
+    <p>Upload an image, select the target resolution, and enhance it. Note: Enhancing to very high resolutions like 16K may consume a lot of memory and could cause browser issues on lower-end devices. Start with small images and 4K for testing.</p>
     
     <input type="file" id="imageInput" accept="image/*">
     <select id="resolutionSelect">
@@ -39,6 +44,7 @@
         <option value="15360">16K (15360px width)</option>
     </select>
     <button id="enhanceButton" disabled>Enhance Image</button>
+    <div id="status"></div>
     
     <h2>Original Image</h2>
     <img id="preview" alt="Original Image">
@@ -48,12 +54,13 @@
     <a id="downloadLink" style="display: none;">Download Enhanced Image</a>
     
     <script>
-        let picaInstance;
+        let picaInstance = null;
         try {
             picaInstance = new Pica();
+            console.log('Pica library loaded successfully.');
         } catch (e) {
             console.error('Failed to load Pica library:', e);
-            alert('Error loading enhancement library. Check your internet or try a different browser.');
+            alert('Error loading enhancement library. Check your internet, disable ad blockers, or try a different browser.');
         }
 
         const imageInput = document.getElementById('imageInput');
@@ -62,11 +69,13 @@
         const preview = document.getElementById('preview');
         const resultCanvas = document.getElementById('result');
         const downloadLink = document.getElementById('downloadLink');
+        const statusDiv = document.getElementById('status');
 
         let originalImage = null;
         let imageLoaded = false;
 
         imageInput.addEventListener('change', (event) => {
+            statusDiv.textContent = 'Loading image...';
             const file = event.target.files[0];
             if (file) {
                 const reader = new FileReader();
@@ -77,12 +86,14 @@
                     originalImage.onload = () => {
                         imageLoaded = true;
                         enhanceButton.disabled = false;
-                        console.log('Image loaded successfully.');
+                        statusDiv.textContent = 'Image loaded. Ready to enhance.';
+                        console.log('Image loaded: width=' + originalImage.width + ', height=' + originalImage.height);
                     };
                     originalImage.onerror = () => {
                         alert('Error loading the image. Try a different file.');
                         imageLoaded = false;
                         enhanceButton.disabled = true;
+                        statusDiv.textContent = '';
                     };
                 };
                 reader.readAsDataURL(file);
@@ -99,9 +110,13 @@
                 return;
             }
 
+            statusDiv.textContent = 'Enhancing image... This may take a while for high resolutions.';
+            console.log('Starting enhancement...');
+
             const targetWidth = parseInt(resolutionSelect.value);
             const aspectRatio = originalImage.width / originalImage.height;
             const targetHeight = Math.round(targetWidth / aspectRatio);
+            console.log('Target dimensions: ' + targetWidth + 'x' + targetHeight);
 
             // Create source canvas
             const fromCanvas = document.createElement('canvas');
@@ -109,24 +124,32 @@
             fromCanvas.height = originalImage.height;
             const ctx = fromCanvas.getContext('2d');
             ctx.drawImage(originalImage, 0, 0);
+            console.log('Source canvas created.');
 
             // Create target canvas
             resultCanvas.width = targetWidth;
             resultCanvas.height = targetHeight;
+            console.log('Target canvas set.');
 
             // Resize using pica
             try {
                 await picaInstance.resize(fromCanvas, resultCanvas);
+                console.log('Resize complete.');
+                statusDiv.textContent = 'Enhancement complete. Generating download...';
+
                 // To blob for download
                 const blob = await picaInstance.toBlob(resultCanvas, 'image/jpeg', 0.90);
+                console.log('Blob created, size: ' + blob.size + ' bytes');
                 const url = URL.createObjectURL(blob);
                 downloadLink.href = url;
                 downloadLink.download = 'enhanced_image.jpg';
                 downloadLink.textContent = 'Download Enhanced Image';
                 downloadLink.style.display = 'block';
+                statusDiv.textContent = 'Done! Enhanced image ready.';
             } catch (error) {
                 console.error('Enhancement error:', error);
-                alert('Error enhancing image: ' + error.message + '. Try a smaller image/resolution or check console.');
+                alert('Error enhancing image: ' + error.message + '. Try a smaller image/resolution or check console for details.');
+                statusDiv.textContent = '';
             }
         });
     </script>
