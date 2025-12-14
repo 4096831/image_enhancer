@@ -34,16 +34,16 @@
 </head>
 <body>
     <h1>Image Resolution Enhancer</h1>
-    <p>Upload an image and upscale it to 2x, 3x, or 4x using AI (client-side only). This uses real super-resolution for much better quality than simple resizing. Works best on modern browsers (Chrome/Firefox/Edge). Processing happens in your browser – no upload to servers!</p>
-    <p><strong>Note:</strong> First use loads models (may take 10-30s). Large images or 4x on low-end devices can be slow or use a lot of memory. Start with small images.</p>
+    <p>Upload an image and upscale it to 4K, 8K, or 16K width using high-quality resizing (Lanczos via Pica library). This is client-side only – better than basic browser resize, maintains sharpness.</p>
+    <p><strong>Note:</strong> Very high resolutions (16K) on large images may be slow or memory-intensive. Start with small images and 4K for testing.</p>
     
     <input type="file" id="imageInput" accept="image/*">
-    <select id="scaleSelect">
-        <option value="2">2x (e.g., to ~4K from 1080p)</option>
-        <option value="3">3x (higher detail)</option>
-        <option value="4" selected>4x (max, e.g., to ~8K/16K)</option>
+    <select id="resolutionSelect">
+        <option value="3840">4K (3840px width)</option>
+        <option value="7680">8K (7680px width)</option>
+        <option value="15360">16K (15360px width)</option>
     </select>
-    <button id="enhanceButton" disabled>Enhance Image (AI Upscale)</button>
+    <button id="enhanceButton" disabled>Enhance Image</button>
     <div id="status"></div>
     
     <h2>Original Image</h2>
@@ -53,12 +53,11 @@
     <canvas id="result"></canvas>
     <a id="downloadLink" style="display: none;">Download Enhanced Image</a>
 
-    <script type="module">
-        import Upscaler from 'https://cdn.jsdelivr.net/npm/upscaler@latest/dist/browser/esm/upscaler.mjs';
-        import * as models from 'https://cdn.jsdelivr.net/npm/upscaler@latest/dist/browser/esm/models/models.mjs';
-
+    <script src="https://cdn.jsdelivr.net/npm/pica@9.0.1/dist/pica.min.js"></script>
+    <script>
+        const pica = pica();
         const imageInput = document.getElementById('imageInput');
-        const scaleSelect = document.getElementById('scaleSelect');
+        const resolutionSelect = document.getElementById('resolutionSelect');
         const enhanceButton = document.getElementById('enhanceButton');
         const preview = document.getElementById('preview');
         const resultCanvas = document.getElementById('result');
@@ -67,7 +66,6 @@
 
         let originalImage = null;
         let imageLoaded = false;
-        let upscaler = null;
 
         imageInput.addEventListener('change', (event) => {
             statusDiv.textContent = 'Loading image...';
@@ -81,7 +79,11 @@
                     originalImage.onload = () => {
                         imageLoaded = true;
                         enhanceButton.disabled = false;
-                        statusDiv.textContent = 'Image loaded. Ready to upscale.';
+                        statusDiv.textContent = 'Image loaded. Ready to enhance.';
+                    };
+                    originalImage.onerror = () => {
+                        alert('Error loading image.');
+                        statusDiv.textContent = '';
                     };
                 };
                 reader.readAsDataURL(file);
@@ -92,53 +94,42 @@
             if (!imageLoaded || !originalImage) return;
 
             enhanceButton.disabled = true;
-            statusDiv.textContent = 'Initializing AI upscaler (first time may take 20-60s)...';
+            statusDiv.textContent = 'Enhancing... (this may take a moment for high resolutions)';
 
-            if (!upscaler) {
-                try {
-                    upscaler = new Upscaler({
-                        model: models.x4.default,  // Default 4x model (good general purpose)
-                    });
-                    statusDiv.textContent = 'AI model loaded. Upscaling image...';
-                } catch (err) {
-                    console.error(err);
-                    alert('Failed to load AI model. Check console or try another browser.');
-                    enhanceButton.disabled = false;
-                    return;
-                }
-            } else {
-                statusDiv.textContent = 'Upscaling image...';
-            }
+            const targetWidth = parseInt(resolutionSelect.value);
+            const aspectRatio = originalImage.naturalWidth / originalImage.naturalHeight;
+            const targetHeight = Math.round(targetWidth / aspectRatio);
 
-            const scale = parseInt(scaleSelect.value);
+            const fromCanvas = document.createElement('canvas');
+            fromCanvas.width = originalImage.naturalWidth;
+            fromCanvas.height = originalImage.naturalHeight;
+            fromCanvas.getContext('2d').drawImage(originalImage, 0, 0);
+
+            resultCanvas.width = targetWidth;
+            resultCanvas.height = targetHeight;
 
             try {
-                // UpscalerJS handles slicing for large images automatically
-                const upscaledSrc = await upscaler.upscale(originalImage, {
-                    scale: scale,
+                await pica.resize(fromCanvas, resultCanvas, {
+                    quality: 3,  // Lanczos (highest quality)
+                    alpha: true,
+                    unsharpAmount: 100,  // Slight sharpen for better look at high scales
+                    unsharpRadius: 0.5,
+                    unsharpThreshold: 1
                 });
 
-                // Display on canvas
-                const img = new Image();
-                img.src = upscaledSrc;
-                img.onload = () => {
-                    resultCanvas.width = img.width;
-                    resultCanvas.height = img.height;
-                    resultCanvas.getContext('2d').drawImage(img, 0, 0);
-                    
-                    // Download link
-                    downloadLink.href = upscaledSrc;
-                    downloadLink.download = 'ai_upscaled_image.png';
-                    downloadLink.textContent = 'Download AI Upscaled Image';
-                    downloadLink.style.display = 'block';
-                    
-                    statusDiv.textContent = `Done! Upscaled to ${scale}x (${img.width}x${img.height})`;
-                    enhanceButton.disabled = false;
-                };
+                const blob = await pica.toBlob(resultCanvas, 'image/png', 1.0);
+                const url = URL.createObjectURL(blob);
+                downloadLink.href = url;
+                downloadLink.download = 'enhanced_image.png';
+                downloadLink.textContent = 'Download Enhanced Image (PNG)';
+                downloadLink.style.display = 'block';
+
+                statusDiv.textContent = 'Done! Enhanced to ' + targetWidth + 'x' + targetHeight;
             } catch (error) {
                 console.error(error);
-                alert('Upscaling failed: ' + error.message + '. Try a smaller image or lower scale.');
-                statusDiv.textContent = '';
+                alert('Enhancement failed. Try a smaller image or resolution.');
+                statusDiv.textContent = 'Error – see console for details.';
+            } finally {
                 enhanceButton.disabled = false;
             }
         });
