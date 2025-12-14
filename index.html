@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Resolution Enhancer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pica/9.0.1/pica.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #preview, #result {
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 20px 0;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Image Resolution Enhancer</h1>
+    <p>Upload an image, select the target resolution, and enhance it. Note: Enhancing to very high resolutions like 16K may consume a lot of memory and could cause browser issues on lower-end devices.</p>
+    
+    <input type="file" id="imageInput" accept="image/*">
+    <select id="resolutionSelect">
+        <option value="3840">4K (3840px width)</option>
+        <option value="7680">8K (7680px width)</option>
+        <option value="15360">16K (15360px width)</option>
+    </select>
+    <button id="enhanceButton">Enhance Image</button>
+    
+    <h2>Original Image</h2>
+    <img id="preview" alt="Original Image">
+    
+    <h2>Enhanced Image</h2>
+    <canvas id="result"></canvas>
+    <a id="downloadLink" style="display: none;">Download Enhanced Image</a>
+    
+    <script>
+        const pica = new Pica();
+        const imageInput = document.getElementById('imageInput');
+        const resolutionSelect = document.getElementById('resolutionSelect');
+        const enhanceButton = document.getElementById('enhanceButton');
+        const preview = document.getElementById('preview');
+        const resultCanvas = document.getElementById('result');
+        const downloadLink = document.getElementById('downloadLink');
+
+        let originalImage = null;
+
+        imageInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    preview.src = e.target.result;
+                    originalImage = new Image();
+                    originalImage.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        enhanceButton.addEventListener('click', async () => {
+            if (!originalImage) {
+                alert('Please upload an image first.');
+                return;
+            }
+
+            const targetWidth = parseInt(resolutionSelect.value);
+            const aspectRatio = originalImage.width / originalImage.height;
+            const targetHeight = Math.round(targetWidth / aspectRatio);
+
+            // Create source canvas
+            const fromCanvas = document.createElement('canvas');
+            fromCanvas.width = originalImage.width;
+            fromCanvas.height = originalImage.height;
+            const ctx = fromCanvas.getContext('2d');
+            ctx.drawImage(originalImage, 0, 0);
+
+            // Create target canvas
+            resultCanvas.width = targetWidth;
+            resultCanvas.height = targetHeight;
+
+            // Resize using pica
+            try {
+                await pica.resize(fromCanvas, resultCanvas);
+                // To blob for download
+                const blob = await pica.toBlob(resultCanvas, 'image/jpeg', 0.90);
+                const url = URL.createObjectURL(blob);
+                downloadLink.href = url;
+                downloadLink.download = 'enhanced_image.jpg';
+                downloadLink.textContent = 'Download Enhanced Image';
+                downloadLink.style.display = 'block';
+            } catch (error) {
+                console.error(error);
+                alert('Error enhancing image. Try a smaller resolution or image.');
+            }
+        });
+    </script>
+</body>
+</html>
