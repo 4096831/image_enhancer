@@ -22,6 +22,10 @@
             padding: 10px 20px;
             font-size: 16px;
         }
+        #enhanceButton:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -34,7 +38,7 @@
         <option value="7680">8K (7680px width)</option>
         <option value="15360">16K (15360px width)</option>
     </select>
-    <button id="enhanceButton">Enhance Image</button>
+    <button id="enhanceButton" disabled>Enhance Image</button>
     
     <h2>Original Image</h2>
     <img id="preview" alt="Original Image">
@@ -44,7 +48,14 @@
     <a id="downloadLink" style="display: none;">Download Enhanced Image</a>
     
     <script>
-        const pica = new Pica();
+        let picaInstance;
+        try {
+            picaInstance = new Pica();
+        } catch (e) {
+            console.error('Failed to load Pica library:', e);
+            alert('Error loading enhancement library. Check your internet or try a different browser.');
+        }
+
         const imageInput = document.getElementById('imageInput');
         const resolutionSelect = document.getElementById('resolutionSelect');
         const enhanceButton = document.getElementById('enhanceButton');
@@ -53,6 +64,7 @@
         const downloadLink = document.getElementById('downloadLink');
 
         let originalImage = null;
+        let imageLoaded = false;
 
         imageInput.addEventListener('change', (event) => {
             const file = event.target.files[0];
@@ -62,14 +74,28 @@
                     preview.src = e.target.result;
                     originalImage = new Image();
                     originalImage.src = e.target.result;
+                    originalImage.onload = () => {
+                        imageLoaded = true;
+                        enhanceButton.disabled = false;
+                        console.log('Image loaded successfully.');
+                    };
+                    originalImage.onerror = () => {
+                        alert('Error loading the image. Try a different file.');
+                        imageLoaded = false;
+                        enhanceButton.disabled = true;
+                    };
                 };
                 reader.readAsDataURL(file);
             }
         });
 
         enhanceButton.addEventListener('click', async () => {
-            if (!originalImage) {
-                alert('Please upload an image first.');
+            if (!imageLoaded || !originalImage) {
+                alert('Please upload and wait for the image to load fully.');
+                return;
+            }
+            if (!picaInstance) {
+                alert('Enhancement library not available. Check console for errors.');
                 return;
             }
 
@@ -90,17 +116,17 @@
 
             // Resize using pica
             try {
-                await pica.resize(fromCanvas, resultCanvas);
+                await picaInstance.resize(fromCanvas, resultCanvas);
                 // To blob for download
-                const blob = await pica.toBlob(resultCanvas, 'image/jpeg', 0.90);
+                const blob = await picaInstance.toBlob(resultCanvas, 'image/jpeg', 0.90);
                 const url = URL.createObjectURL(blob);
                 downloadLink.href = url;
                 downloadLink.download = 'enhanced_image.jpg';
                 downloadLink.textContent = 'Download Enhanced Image';
                 downloadLink.style.display = 'block';
             } catch (error) {
-                console.error(error);
-                alert('Error enhancing image. Try a smaller resolution or image.');
+                console.error('Enhancement error:', error);
+                alert('Error enhancing image: ' + error.message + '. Try a smaller image/resolution or check console.');
             }
         });
     </script>
